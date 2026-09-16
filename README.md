@@ -74,7 +74,11 @@ Then we run using
 **libraries used**
 
 stdio.h — printing and error messages
+
 stdlib.h — program exit values
+
 unistd.h — pipe(), fork(), read(), write(), and close()
+
 sys/wait.h — waitpid()
+
 errno.h — error handling
