@@ -16,4 +16,4 @@ Closing unused pipe ends prevents resource leaks and ensures that the operating 
 
 5. Does sending 1, 2, 3, 4, 5 through one pipe guarantee the printed order Producer 1, Consumer 1, Producer 2, Consumer 2, etc.?
 
-No. The pipe preserves the order of the data, but the scheduler may allow the producer to print and write several values before the consumer gets a chance to run. 
+No. The pipe preserves the order of the data, but the scheduler may allow the producer to print and write several values before the consumer gets a chance to run. The design needs additional synchronization, such as a second pipe used for acknowledgments so the producer waits for the consumer after each value.
