@@ -25,6 +25,7 @@ No. The pipe preserves the order of the data, but the scheduler may allow the pr
 
 
 **Code description and break-down**
+
 This program demonstrates inter-process communication between two separate OS processes: a Producer and a Consumer. The Producer generates the integers 1 through 5 and sends them to the Consumer using a pipe.
 
 A second pipe is used by the Consumer to send an acknowledgment back to the Producer. This ensures that the Producer does not produce or print the next number until the Consumer has received and printed the previous number.
@@ -32,15 +33,25 @@ A second pipe is used by the Consumer to send an acknowledgment back to the Prod
 The output will follow this order:
 -----------------------------------------------------------
 Producer: 1
+
 Consumer: 1
+
 Producer: 2
+
 Consumer: 2
+
 Producer: 3
+
 Consumer: 3
+
 Producer: 4
+
 Consumer: 4
+
 Producer: 5
+
 Consumer: 5
+
 -----------------------------------------------------------
 The program creates two pipes before calling fork().
 
@@ -51,11 +62,17 @@ After sending a number, the Producer blocks while waiting for an acknowledgment.
 Each process closes the pipe ends that it does not use, and all remaining pipe descriptors are closed when communication is finished. The Producer also uses waitpid() to wait for the Consumer process to terminate.
 
 **Compiling and running the code**
-Used Windows Subsystem for Linux 
-We compile using gcc producer_consumer.c -o producer_consumer
-Then we run using ./producer_consumer
+
+Used Windows Subsystem for Linux and
+we compile using 
+
+gcc producer_consumer.c -o producer_consumer
+
+Then we run using 
+./producer_consumer
 
 **libraries used**
+
 stdio.h — printing and error messages
 stdlib.h — program exit values
 unistd.h — pipe(), fork(), read(), write(), and close()
