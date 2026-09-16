@@ -1,0 +1,265 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <errno.h>
+
+/*
+ * Writes exactly count bytes to a file descriptor.
+ * This handles interrupted or partial writes.
+ */
+int write_all(int fd, const void *buffer, size_t count)
+{
+    const char *ptr = buffer;
+    size_t total_written = 0;
+
+    while (total_written < count)
+    {
+        ssize_t bytes_written =
+            write(fd, ptr + total_written, count - total_written);
+
+        if (bytes_written < 0)
+        {
+            if (errno == EINTR)
+                continue;
+
+            return -1;
+        }
+
+        total_written += bytes_written;
+    }
+
+    return 0;
+}
+
+/*
+ * Reads exactly count bytes from a file descriptor.
+ * Returns:
+ *   1 = successful read
+ *   0 = end of file
+ *  -1 = error
+ */
+int read_all(int fd, void *buffer, size_t count)
+{
+    char *ptr = buffer;
+    size_t total_read = 0;
+
+    while (total_read < count)
+    {
+        ssize_t bytes_read =
+            read(fd, ptr + total_read, count - total_read);
+
+        if (bytes_read == 0)
+            return 0;
+
+        if (bytes_read < 0)
+        {
+            if (errno == EINTR)
+                continue;
+
+            return -1;
+        }
+
+        total_read += bytes_read;
+    }
+
+    return 1;
+}
+
+int main(void)
+{
+    /*
+     * data_pipe:
+     * Producer writes numbers.
+     * Consumer reads numbers.
+     *
+     * ack_pipe:
+     * Consumer writes acknowledgments.
+     * Producer reads acknowledgments.
+     */
+    int data_pipe[2];
+    int ack_pipe[2];
+
+    if (pipe(data_pipe) == -1)
+    {
+        perror("data pipe");
+        return EXIT_FAILURE;
+    }
+
+    if (pipe(ack_pipe) == -1)
+    {
+        perror("ack pipe");
+
+        close(data_pipe[0]);
+        close(data_pipe[1]);
+
+        return EXIT_FAILURE;
+    }
+
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
+        perror("fork");
+
+        close(data_pipe[0]);
+        close(data_pipe[1]);
+        close(ack_pipe[0]);
+        close(ack_pipe[1]);
+
+        return EXIT_FAILURE;
+    }
+
+    /*
+     * Child process = Consumer
+     */
+    if (pid == 0)
+    {
+        int number;
+        int acknowledgement = 1;
+
+        /*
+         * Consumer does not write to data_pipe,
+         * so close its write end.
+         */
+        close(data_pipe[1]);
+
+        /*
+         * Consumer does not read from ack_pipe,
+         * so close its read end.
+         */
+        close(ack_pipe[0]);
+
+        for (int i = 0; i < 5; i++)
+        {
+            /*
+             * Wait until the Producer sends a number.
+             */
+            int result =
+                read_all(data_pipe[0], &number, sizeof(number));
+
+            if (result != 1)
+            {
+                fprintf(stderr,
+                        "Consumer failed to read from pipe.\n");
+
+                close(data_pipe[0]);
+                close(ack_pipe[1]);
+
+                return EXIT_FAILURE;
+            }
+
+            /*
+             * Print the received number.
+             */
+            printf("Consumer: %d\n", number);
+
+            /*
+             * Force the output to be displayed before
+             * sending the acknowledgment.
+             */
+            fflush(stdout);
+
+            /*
+             * Tell the Producer that this number has
+             * been printed.
+             */
+            if (write_all(ack_pipe[1],
+                          &acknowledgement,
+                          sizeof(acknowledgement)) == -1)
+            {
+                perror("Consumer acknowledgment");
+
+                close(data_pipe[0]);
+                close(ack_pipe[1]);
+
+                return EXIT_FAILURE;
+            }
+        }
+
+        /*
+         * Consumer is finished using both pipes.
+         */
+        close(data_pipe[0]);
+        close(ack_pipe[1]);
+
+        return EXIT_SUCCESS;
+    }
+
+    /*
+     * Parent process = Producer
+     */
+    else
+    {
+        int acknowledgement;
+
+        /*
+         * Producer does not read from data_pipe,
+         * so close its read end.
+         */
+        close(data_pipe[0]);
+
+        /*
+         * Producer does not write to ack_pipe,
+         * so close its write end.
+         */
+        close(ack_pipe[1]);
+
+        for (int number = 1; number <= 5; number++)
+        {
+            /*
+             * Print the number being produced.
+             */
+            printf("Producer: %d\n", number);
+
+            /*
+             * Flush stdout so the Producer message is
+             * displayed before the Consumer message.
+             */
+            fflush(stdout);
+
+            /*
+             * Send the number to the Consumer.
+             */
+            if (write_all(data_pipe[1],
+                          &number,
+                          sizeof(number)) == -1)
+            {
+                perror("Producer write");
+                break;
+            }
+
+            /*
+             * Wait for the Consumer to acknowledge that
+             * it printed the number.
+             *
+             * The Producer cannot continue to the next
+             * number until this acknowledgment arrives.
+             */
+            int result =
+                read_all(ack_pipe[0],
+                         &acknowledgement,
+                         sizeof(acknowledgement));
+
+            if (result != 1)
+            {
+                fprintf(stderr,
+                        "Producer failed to receive acknowledgment.\n");
+                break;
+            }
+        }
+
+        /*
+         * Producer is finished using both pipes.
+         */
+        close(data_pipe[1]);
+        close(ack_pipe[0]);
+
+        /*
+         * Wait for the Consumer process to terminate.
+         */
+        waitpid(pid, NULL, 0);
+
+        return EXIT_SUCCESS;
+    }
+}
